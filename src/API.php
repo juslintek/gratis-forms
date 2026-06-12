@@ -1,30 +1,52 @@
 <?php declare(strict_types=1);
+
 namespace Gratis\Forms;
 
-final class API
-{
-    public static function register(): void
-    {
-        register_rest_route('gratis-forms/v1', '/entries/(?P<form_id>\d+)', [
-            'methods' => 'GET',
-            'callback' => [__CLASS__, 'getEntries'],
-            'permission_callback' => fn() => current_user_can('manage_options'),
-        ]);
+use Gratis\Forms\Storage\Submissions;
+
+defined('ABSPATH') || exit;
+
+/**
+ * Read-only REST API for retrieving submissions of a form (admin only).
+ */
+final class API {
+
+    /**
+     * Register REST routes.
+     */
+    public static function register(): void {
+        register_rest_route(
+            'gratis-forms/v1',
+            '/entries/(?P<form_id>\d+)',
+            [
+                'methods'             => 'GET',
+                'callback'            => [__CLASS__, 'get_entries'],
+                'permission_callback' => static fn() => current_user_can('manage_options'),
+                'args'                => [
+                    'form_id' => [
+                        'validate_callback' => static fn($value) => is_numeric($value),
+                        'sanitize_callback' => 'absint',
+                    ],
+                ],
+            ]
+        );
     }
 
-    public static function getEntries(\WP_REST_Request $request): \WP_REST_Response
-    {
-        $entries = get_posts([
-            'post_type'   => 'gratis_form_entry',
-            'post_parent' => (int) $request['form_id'],
-            'numberposts' => 100,
-        ]);
+    /**
+     * Return submissions for the requested form.
+     */
+    public static function get_entries(\WP_REST_Request $request): \WP_REST_Response {
+        $form_id = (int) $request['form_id'];
+        $rows    = Submissions::query($form_id, 100, 0);
 
-        $data = array_map(fn($e) => [
-            'id'   => $e->ID,
-            'date' => $e->post_date,
-            'data' => get_post_meta($e->ID, '_gratis_entry_data', true),
-        ], $entries);
+        $data = array_map(
+            static fn(array $row): array => [
+                'id'   => (int) $row['id'],
+                'date' => (string) $row['created_at'],
+                'data' => $row['data'],
+            ],
+            $rows
+        );
 
         return new \WP_REST_Response($data);
     }

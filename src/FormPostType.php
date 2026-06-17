@@ -25,6 +25,12 @@ final class FormPostType {
     /** Supported field types. */
     public const FIELD_TYPES = ['text', 'email', 'textarea', 'select', 'checkbox', 'radio', 'file'];
 
+    /** Allowed conditional-rule actions: show or hide the field when the rule matches. */
+    public const COND_ACTIONS = ['show', 'hide'];
+
+    /** Allowed conditional-rule comparison operators. */
+    public const COND_OPERATORS = ['is', 'is_not', 'contains'];
+
     /**
      * Register the custom post type.
      */

@@ -80,6 +80,16 @@ final class FieldBuilder {
                     'remove'      => __('Remove', 'gratis-forms'),
                     'drag'        => __('Drag to reorder', 'gratis-forms'),
                     'empty'       => __('No fields yet. Add your first field below.', 'gratis-forms'),
+                    'conditional' => __('Conditional logic', 'gratis-forms'),
+                    'condShow'    => __('Show', 'gratis-forms'),
+                    'condHide'    => __('Hide', 'gratis-forms'),
+                    'condWhen'    => __('this field when', 'gratis-forms'),
+                    'condIs'      => __('is', 'gratis-forms'),
+                    'condIsNot'   => __('is not', 'gratis-forms'),
+                    'condContains' => __('contains', 'gratis-forms'),
+                    'condValue'   => __('Value', 'gratis-forms'),
+                    'condSelect'  => __('— Select a field —', 'gratis-forms'),
+                    'condNoFields' => __('Add another field first to use it as a condition.', 'gratis-forms'),
                 ],
             ]
         );
@@ -176,11 +186,18 @@ final class FieldBuilder {
     /**
      * Validate and sanitise a decoded field array.
      *
+     * Each field is assigned a stable `id` (referenced by conditional rules so
+     * that reordering or relabelling fields never breaks a rule). A second
+     * pass drops any conditional rule whose target field id is unknown or is
+     * the field itself, after every id is known (so forward references to
+     * fields defined later in the form still resolve).
+     *
      * @param array<int,mixed> $input Raw decoded field definitions.
      * @return array<int,array<string,mixed>> Clean field definitions.
      */
     public static function sanitize_fields(array $input): array {
         $clean = [];
+        $ids   = [];
 
         foreach ($input as $field) {
             if (!is_array($field)) {
@@ -195,7 +212,16 @@ final class FieldBuilder {
                 continue;
             }
 
+            // Stable field id. Preserve a valid client-provided id; generate a
+            // new one when missing or duplicated.
+            $id = isset($field['id']) ? sanitize_key((string) $field['id']) : '';
+            if ('' === $id || isset($ids[$id])) {
+                $id = self::generate_field_id($ids);
+            }
+            $ids[$id] = true;
+
             $entry = [
+                'id'          => $id,
                 'type'        => $type,
                 'label'       => $label,
                 'placeholder' => isset($field['placeholder']) ? sanitize_text_field((string) $field['placeholder']) : '',
@@ -213,9 +239,74 @@ final class FieldBuilder {
                 $entry['options'] = $options;
             }
 
+            $conditional = self::sanitize_conditional($field['conditional'] ?? null);
+            if (null !== $conditional) {
+                $entry['conditional'] = $conditional;
+            }
+
             $clean[] = $entry;
         }
 
+        // Second pass: drop rules pointing at an unknown field id or at self.
+        foreach ($clean as $i => $entry) {
+            if (!isset($entry['conditional'])) {
+                continue;
+            }
+            $target = $entry['conditional']['field'];
+            if ('' === $target || $target === $entry['id'] || !isset($ids[$target])) {
+                unset($clean[$i]['conditional']);
+            }
+        }
+
         return $clean;
+    }
+
+    /**
+     * Validate and sanitise a single conditional rule.
+     *
+     * @param mixed $raw Raw rule (expected shape: action/field/operator/value).
+     * @return array{action:string,field:string,operator:string,value:string}|null
+     *               Clean rule, or null when the rule is absent/invalid. The
+     *               `field` target is resolved against known ids by the caller.
+     */
+    private static function sanitize_conditional($raw): ?array {
+        if (!is_array($raw)) {
+            return null;
+        }
+
+        $action   = isset($raw['action']) ? sanitize_key((string) $raw['action']) : '';
+        $operator = isset($raw['operator']) ? sanitize_key((string) $raw['operator']) : '';
+        $target   = isset($raw['field']) ? sanitize_key((string) $raw['field']) : '';
+
+        if (!in_array($action, FormPostType::COND_ACTIONS, true)) {
+            return null;
+        }
+        if (!in_array($operator, FormPostType::COND_OPERATORS, true)) {
+            return null;
+        }
+        if ('' === $target) {
+            return null;
+        }
+
+        return [
+            'action'   => $action,
+            'field'    => $target,
+            'operator' => $operator,
+            'value'    => isset($raw['value']) ? sanitize_text_field((string) $raw['value']) : '',
+        ];
+    }
+
+    /**
+     * Generate a unique, sanitise-safe field id.
+     *
+     * @param array<string,bool> $used Map of already-used ids.
+     * @return string New unique id.
+     */
+    private static function generate_field_id(array $used): string {
+        do {
+            $id = 'f' . substr(md5(uniqid('', true)), 0, 8);
+        } while (isset($used[$id]));
+
+        return $id;
     }
 }

@@ -32,6 +32,31 @@
         store.value = JSON.stringify(model);
     }
 
+    // Stable per-field id, referenced by conditional rules so reordering or
+    // relabelling never breaks a rule. Kept to [a-z0-9_-] to survive the
+    // server-side sanitize_key() round-trip.
+    function genId(used) {
+        var id;
+        do {
+            id = ('f' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4))
+                .toLowerCase().replace(/[^a-z0-9_-]/g, '');
+            if (id.length < 3) {
+                id = 'f' + id + 'x';
+            }
+        } while (used[id]);
+        used[id] = true;
+        return id;
+    }
+
+    function ensureIds() {
+        var used = {};
+        model.forEach(function (f) {
+            var id = (f && typeof f.id === 'string') ? f.id.toLowerCase().replace(/[^a-z0-9_-]/g, '') : '';
+            f.id = (id && !used[id]) ? id : genId(used);
+            used[f.id] = true;
+        });
+    }
+
     function el(tag, attrs, children) {
         var node = document.createElement(tag);
         attrs = attrs || {};
@@ -73,6 +98,7 @@
                 field.options = [];
             }
             model.push(field);
+            ensureIds();
             sync();
             render();
         });
@@ -120,6 +146,8 @@
         reqLabel.appendChild(document.createTextNode(' ' + (i18n.required || 'Required')));
         body.appendChild(reqLabel);
 
+        body.appendChild(renderConditional(field, index));
+
         var remove = el('button', { type: 'button', 'class': 'button-link gf-builder-remove', text: i18n.remove || 'Remove' });
         remove.addEventListener('click', function () {
             model.splice(index, 1);
@@ -152,6 +180,81 @@
         return row;
     }
 
+    // Per-field conditional-logic editor: an enable toggle plus
+    // action / source-field / operator / value controls. The source field is
+    // referenced by its stable id, so reordering fields keeps rules intact.
+    function renderConditional(field, index) {
+        var wrap = el('div', { 'class': 'gf-builder-cond' });
+
+        var toggleLabel = el('label', { 'class': 'gf-builder-cond-toggle' });
+        var toggle = el('input', { type: 'checkbox' });
+        toggle.checked = !!field.conditional;
+        toggle.addEventListener('change', function () {
+            if (toggle.checked) {
+                field.conditional = field.conditional || { action: 'show', field: '', operator: 'is', value: '' };
+            } else {
+                delete field.conditional;
+            }
+            sync();
+            render();
+        });
+        toggleLabel.appendChild(toggle);
+        toggleLabel.appendChild(document.createTextNode(' ' + (i18n.conditional || 'Conditional logic')));
+        wrap.appendChild(toggleLabel);
+
+        if (!field.conditional) {
+            return wrap;
+        }
+
+        var others = model.filter(function (f, i) { return i !== index; });
+        if (!others.length) {
+            wrap.appendChild(el('p', { 'class': 'gf-builder-cond-note', text: i18n.condNoFields || 'Add another field first to use it as a condition.' }));
+            return wrap;
+        }
+
+        var cond = field.conditional;
+        var line = el('div', { 'class': 'gf-builder-cond-line' });
+
+        var actionSel = el('select', { 'class': 'gf-builder-cond-action' });
+        [['show', i18n.condShow || 'Show'], ['hide', i18n.condHide || 'Hide']].forEach(function (p) {
+            actionSel.appendChild(el('option', { value: p[0], text: p[1] }));
+        });
+        actionSel.value = cond.action || 'show';
+        actionSel.addEventListener('change', function () { cond.action = actionSel.value; sync(); });
+        line.appendChild(actionSel);
+
+        line.appendChild(el('span', { 'class': 'gf-builder-cond-text', text: ' ' + (i18n.condWhen || 'this field when') + ' ' }));
+
+        var fieldSel = el('select', { 'class': 'gf-builder-cond-field' });
+        fieldSel.appendChild(el('option', { value: '', text: i18n.condSelect || '— Select a field —' }));
+        model.forEach(function (f, i) {
+            if (i === index) {
+                return;
+            }
+            var text = f.label || ((i18n.label || 'Field') + ' ' + (i + 1));
+            fieldSel.appendChild(el('option', { value: f.id || '', text: text }));
+        });
+        fieldSel.value = cond.field || '';
+        fieldSel.addEventListener('change', function () { cond.field = fieldSel.value; sync(); });
+        line.appendChild(fieldSel);
+
+        var opSel = el('select', { 'class': 'gf-builder-cond-op' });
+        [['is', i18n.condIs || 'is'], ['is_not', i18n.condIsNot || 'is not'], ['contains', i18n.condContains || 'contains']].forEach(function (p) {
+            opSel.appendChild(el('option', { value: p[0], text: p[1] }));
+        });
+        opSel.value = cond.operator || 'is';
+        opSel.addEventListener('change', function () { cond.operator = opSel.value; sync(); });
+        line.appendChild(opSel);
+
+        var valInput = el('input', { type: 'text', 'class': 'gf-builder-cond-value', placeholder: i18n.condValue || 'Value', value: cond.value || '' });
+        valInput.addEventListener('input', function () { cond.value = valInput.value; sync(); });
+        line.appendChild(valInput);
+
+        wrap.appendChild(line);
+        return wrap;
+    }
+
+    ensureIds();
     sync();
     render();
 })();

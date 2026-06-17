@@ -8,6 +8,11 @@
     margin: 0 0 1rem;
 }
 
+/* Fields hidden by a conditional rule (see assets/forms.js). */
+.gratis-form-field[hidden] {
+    display: none !important;
+}
+
 .gratis-form-field label,
 .gratis-form-field legend {
     display: block;

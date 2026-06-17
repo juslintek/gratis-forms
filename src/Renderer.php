@@ -141,7 +141,24 @@ final class Renderer {
         $place    = isset($field['placeholder']) ? (string) $field['placeholder'] : '';
         $options  = isset($field['options']) && is_array($field['options']) ? $field['options'] : [];
 
-        $out  = '<div class="gratis-form-field gratis-form-field--' . esc_attr($type) . '">';
+        // Stable key used by the conditional engine to locate this field; fall
+        // back to the index for legacy forms saved before fields had ids.
+        $key  = isset($field['id']) && '' !== (string) $field['id']
+            ? sanitize_key((string) $field['id'])
+            : 'gfk' . $index;
+        $attr = ' data-gf-key="' . esc_attr($key) . '"';
+
+        // Expose a conditional rule (if any) as data-* attributes consumed by
+        // assets/forms.js. The target references another field's data-gf-key.
+        $cond = isset($field['conditional']) && is_array($field['conditional']) ? $field['conditional'] : null;
+        if (null !== $cond && isset($cond['action'], $cond['field'], $cond['operator'])) {
+            $attr .= ' data-gf-cond-action="' . esc_attr((string) $cond['action']) . '"';
+            $attr .= ' data-gf-cond-field="' . esc_attr((string) $cond['field']) . '"';
+            $attr .= ' data-gf-cond-op="' . esc_attr((string) $cond['operator']) . '"';
+            $attr .= ' data-gf-cond-value="' . esc_attr((string) ($cond['value'] ?? '')) . '"';
+        }
+
+        $out  = '<div class="gratis-form-field gratis-form-field--' . esc_attr($type) . '"' . $attr . '>';
 
         if (in_array($type, ['checkbox', 'radio'], true) && !empty($options)) {
             $out .= '<fieldset><legend>' . esc_html($label) . wp_kses_post($req_mark) . '</legend>';

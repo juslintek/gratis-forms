@@ -55,11 +55,18 @@ final class Submission {
         $fields = get_post_meta($form_id, FormPostType::META_FIELDS, true);
         $fields = is_array($fields) ? $fields : [];
 
+        // Fields hidden by their conditional rule must not be required.
+        $visible = self::visibility_map($fields);
+
         $data   = [];
         $errors = [];
 
         foreach ($fields as $index => $field) {
             $field = (array) $field;
+            // A field hidden by its conditional rule skips required-validation.
+            if (!($visible[$index] ?? true)) {
+                $field['required'] = false;
+            }
             $type  = isset($field['type']) ? (string) $field['type'] : 'text';
             $label = isset($field['label']) ? (string) $field['label'] : ('field_' . $index);
             $key   = 'field_' . $index;
@@ -195,6 +202,135 @@ final class Submission {
         }
 
         return [esc_url_raw((string) $uploaded['url']), null];
+    }
+
+    /**
+     * Determine which fields are visible given the submitted values, honouring
+     * conditional rules. Fields hidden by a rule are exempt from required-
+     * validation in {@see self::handle()}.
+     *
+     * Visibility is settled iteratively so chained rules (field A controls B
+     * controls C) resolve, with a controlling field that is itself hidden
+     * counting as empty. The loop is bounded by the field count, so a circular
+     * rule set simply settles to a stable state instead of looping forever.
+     *
+     * @param array<int,mixed> $fields Stored field definitions.
+     * @return array<int,bool> Map of field index => visible.
+     */
+    private static function visibility_map(array $fields): array {
+        $visible     = [];
+        $values      = [];
+        $rules       = [];
+        $id_to_index = [];
+
+        foreach ($fields as $index => $field) {
+            $index           = (int) $index;
+            $field           = (array) $field;
+            $visible[$index] = true;
+            $type            = isset($field['type']) ? (string) $field['type'] : 'text';
+            $values[$index]  = self::submitted_values($index, $type);
+
+            $id = isset($field['id']) ? sanitize_key((string) $field['id']) : '';
+            if ('' !== $id) {
+                $id_to_index[$id] = $index;
+            }
+            if (isset($field['conditional']) && is_array($field['conditional'])) {
+                $rules[$index] = $field['conditional'];
+            }
+        }
+
+        if (empty($rules)) {
+            return $visible;
+        }
+
+        $max = count($fields) + 1;
+        for ($pass = 0; $pass < $max; $pass++) {
+            $changed = false;
+
+            foreach ($rules as $index => $rule) {
+                $target = isset($rule['field']) ? (string) $rule['field'] : '';
+                if (!isset($id_to_index[$target])) {
+                    continue; // Unknown controller: rule is inert, field stays visible.
+                }
+
+                $ctrl_index  = $id_to_index[$target];
+                $ctrl_values = ($visible[$ctrl_index] ?? true) ? ($values[$ctrl_index] ?? []) : [];
+
+                $operator = isset($rule['operator']) ? (string) $rule['operator'] : 'is';
+                $needle   = isset($rule['value']) ? (string) $rule['value'] : '';
+                $matched  = self::rule_matches($operator, $ctrl_values, $needle);
+
+                $action = isset($rule['action']) ? (string) $rule['action'] : 'show';
+                $should = 'hide' === $action ? !$matched : $matched;
+
+                if (($visible[$index] ?? true) !== $should) {
+                    $visible[$index] = $should;
+                    $changed         = true;
+                }
+            }
+
+            if (!$changed) {
+                break;
+            }
+        }
+
+        return $visible;
+    }
+
+    /**
+     * Read the submitted value(s) for a field as an array of strings.
+     *
+     * @param int    $index Field index (POST key field_{index}).
+     * @param string $type  Field type (checkbox fields are multi-value).
+     * @return array<int,string> Submitted value(s).
+     */
+    private static function submitted_values(int $index, string $type): array {
+        $key = 'field_' . $index;
+
+        // Nonce is verified by handle() before this helper runs.
+        if (!isset($_POST[$key])) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+            return 'checkbox' === $type ? [] : [''];
+        }
+
+        // Nonce verified by handle(); each value is sanitised immediately below.
+        $raw = wp_unslash($_POST[$key]); // phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+        if (is_array($raw)) {
+            return array_values(array_map(static fn($v) => sanitize_text_field((string) $v), $raw));
+        }
+
+        return [sanitize_text_field((string) $raw)];
+    }
+
+    /**
+     * Evaluate a conditional operator against a controlling field's value(s).
+     *
+     * @param string            $operator One of is|is_not|contains.
+     * @param array<int,string> $values   Controlling field value(s).
+     * @param string            $needle   Rule comparison value.
+     * @return bool Whether the rule matches.
+     */
+    private static function rule_matches(string $operator, array $values, string $needle): bool {
+        $needle = trim($needle);
+        $values = array_map('trim', $values);
+
+        switch ($operator) {
+            case 'is':
+                return in_array($needle, $values, true);
+            case 'is_not':
+                return !in_array($needle, $values, true);
+            case 'contains':
+                if ('' === $needle) {
+                    return false;
+                }
+                foreach ($values as $value) {
+                    if (str_contains($value, $needle)) {
+                        return true;
+                    }
+                }
+                return false;
+            default:
+                return true;
+        }
     }
 
     /**

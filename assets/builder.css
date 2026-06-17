@@ -70,3 +70,38 @@
     gap: 0.5rem;
     margin-top: 0.75rem;
 }
+
+.gf-builder-cond {
+    margin-top: 0.2rem;
+    padding-top: 0.4rem;
+    border-top: 1px dashed #dcdcde;
+}
+
+.gf-builder-cond-toggle {
+    font-size: 0.9rem;
+}
+
+.gf-builder-cond-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+.gf-builder-cond-text {
+    color: #646970;
+    font-size: 0.9rem;
+}
+
+.gf-builder-cond-value {
+    flex: 1;
+    min-width: 8rem;
+}
+
+.gf-builder-cond-note {
+    margin: 0.4rem 0 0;
+    color: #646970;
+    font-size: 0.85rem;
+    font-style: italic;
+}

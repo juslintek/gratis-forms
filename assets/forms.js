@@ -54,6 +54,7 @@
                 clearErrors(form);
                 if (res && res.success) {
                     form.reset();
+                    evaluateConditional(form);
                     feedback(form, res.data && res.data.message, false);
                 } else {
                     var d = (res && res.data) || {};
@@ -97,4 +98,135 @@
     }
 
     document.addEventListener('submit', handleSubmit, false);
+
+    // --- Conditional fields -------------------------------------------------
+    // Evaluates data-gf-cond-* rules rendered by Renderer::render_field and
+    // shows/hides each field accordingly. Hidden fields are disabled so their
+    // inputs are excluded from the submission (mirroring the server's
+    // required-validation skip).
+
+    function condWrappers(form) {
+        return Array.prototype.slice.call(form.querySelectorAll('[data-gf-cond-field]'));
+    }
+
+    function wrapperValues(wrapper) {
+        var out = [];
+        if (!wrapper) {
+            return out;
+        }
+        Array.prototype.forEach.call(wrapper.querySelectorAll('input, select, textarea'), function (inp) {
+            var type = (inp.type || '').toLowerCase();
+            if (type === 'checkbox' || type === 'radio') {
+                if (inp.checked) {
+                    out.push(inp.value);
+                }
+            } else if (inp.tagName === 'SELECT' && inp.multiple) {
+                Array.prototype.forEach.call(inp.options, function (opt) {
+                    if (opt.selected) {
+                        out.push(opt.value);
+                    }
+                });
+            } else {
+                out.push(inp.value);
+            }
+        });
+        return out.map(function (s) { return (s == null ? '' : String(s)).trim(); });
+    }
+
+    function ruleMatches(op, values, needle) {
+        needle = (needle == null ? '' : String(needle)).trim();
+        if (op === 'is') {
+            return values.indexOf(needle) !== -1;
+        }
+        if (op === 'is_not') {
+            return values.indexOf(needle) === -1;
+        }
+        if (op === 'contains') {
+            if (needle === '') {
+                return false;
+            }
+            for (var i = 0; i < values.length; i++) {
+                if (values[i].indexOf(needle) !== -1) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return true;
+    }
+
+    function setFieldVisible(wrapper, show) {
+        wrapper.hidden = !show;
+        wrapper.style.display = show ? '' : 'none';
+        if (show) {
+            wrapper.removeAttribute('aria-hidden');
+        } else {
+            wrapper.setAttribute('aria-hidden', 'true');
+        }
+        Array.prototype.forEach.call(wrapper.querySelectorAll('input, select, textarea'), function (inp) {
+            inp.disabled = !show;
+        });
+    }
+
+    function evaluateConditional(form) {
+        var wrappers = condWrappers(form);
+        if (!wrappers.length) {
+            return;
+        }
+
+        // Settle iteratively so chained rules resolve; bounded by field count
+        // so a circular rule set just settles instead of looping forever.
+        var vis = {};
+        var max = wrappers.length + 1;
+        var pass, i;
+        for (pass = 0; pass < max; pass++) {
+            var changed = false;
+            for (i = 0; i < wrappers.length; i++) {
+                var w = wrappers[i];
+                var ctrlKey = w.getAttribute('data-gf-cond-field');
+                var ctrl = ctrlKey ? form.querySelector('[data-gf-key="' + ctrlKey + '"]') : null;
+                var values;
+                if (!ctrl) {
+                    values = [];
+                } else {
+                    var ctrlOwnKey = ctrl.getAttribute('data-gf-key');
+                    // A controlling field that is itself hidden counts as empty.
+                    values = (ctrlOwnKey && vis[ctrlOwnKey] === false) ? [] : wrapperValues(ctrl);
+                }
+                var matched = ruleMatches(w.getAttribute('data-gf-cond-op'), values, w.getAttribute('data-gf-cond-value'));
+                var show = (w.getAttribute('data-gf-cond-action') === 'hide') ? !matched : matched;
+                var ownKey = w.getAttribute('data-gf-key');
+                if (vis[ownKey] !== show) {
+                    vis[ownKey] = show;
+                    changed = true;
+                }
+            }
+            if (!changed) {
+                break;
+            }
+        }
+
+        for (i = 0; i < wrappers.length; i++) {
+            setFieldVisible(wrappers[i], vis[wrappers[i].getAttribute('data-gf-key')] !== false);
+        }
+    }
+
+    function initConditional(form) {
+        if (!condWrappers(form).length) {
+            return;
+        }
+        evaluateConditional(form);
+        form.addEventListener('input', function () { evaluateConditional(form); });
+        form.addEventListener('change', function () { evaluateConditional(form); });
+    }
+
+    function initAllConditional() {
+        Array.prototype.forEach.call(document.querySelectorAll('.gratis-form'), initConditional);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAllConditional);
+    } else {
+        initAllConditional();
+    }
 })();

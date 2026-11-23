@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Gratis Forms
  * Plugin URI: https://github.com/juslintek/gratis-forms
- * Description: Drag-and-drop form builder with conditional fields, anti-spam (honeypot + reCAPTCHA v3) and submission storage. Replaces WPForms ($49/yr) and Gravity Forms ($259/yr).
+ * Description: Drag-and-drop form builder with conditional fields, anti-spam (honeypot + reCAPTCHA v3) and submission storage.
  * Version: 1.0.0
  * Requires at least: 6.4
  * Requires PHP: 8.1

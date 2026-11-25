@@ -11,11 +11,11 @@ global $wpdb;
 
 // Remove plugin options.
 // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", 'gratis_forms_%'));
+$wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $wpdb->esc_like('gratis_forms_') . '%'));
 
 // Remove custom tables.
-// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange
-$wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}gratis_form_submissions");
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
+$wpdb->query($wpdb->prepare('DROP TABLE IF EXISTS %i', $wpdb->prefix . 'gratis_form_submissions'));
 
 // Remove custom post type data.
 // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching

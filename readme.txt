@@ -41,11 +41,24 @@ Yes. Everything is free — no "Pro" version, no locked features, and no nag scr
 
 = Does this plugin make external HTTP requests? =
 
-No. Unless you explicitly configure an external service (such as a CDN or SMTP host), the plugin does not phone home or send analytics.
+No, unless you explicitly configure Google reCAPTCHA v3 keys in the plugin settings.
 
 = Where do I get support? =
 
 Open an issue on the plugin's GitHub repository.
+
+== Third-Party Services ==
+
+This plugin optionally integrates with Google reCAPTCHA v3 for spam protection when you enter a Site Key and Secret Key in the settings.
+
+= Google reCAPTCHA v3 =
+
+When configured, the plugin loads the reCAPTCHA script (`https://www.google.com/recaptcha/api.js`) on pages containing a form and verifies submission tokens with `https://www.google.com/recaptcha/api/siteverify`.
+
+* [Google Terms of Service](https://policies.google.com/terms)
+* [Google Privacy Policy](https://policies.google.com/privacy)
+
+No requests are sent to Google unless you configure reCAPTCHA keys.
 
 == Changelog ==
 
